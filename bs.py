@@ -8,11 +8,11 @@ from pathlib import Path
 
 class SimpleTerminal:
     def __init__(self):
-        self.cwd = os.getcwd()  # get current dir
-        self.user = getpass.getuser()  # get user
-        self.host = socket.gethostname()  # get pc name
-        self.command_history = []  # just store past cmds
-        self.builtins = {  # basic stuff handled by python
+        self.cwd = os.getcwd()  # get current working dir
+        self.user = getpass.getuser()  # get the username
+        self.host = socket.gethostname()  # get the device/host name
+        self.command_history = []  # store past commands
+        self.builtins = {  # basic commands we handle ourselves
             'cd', 'pwd', 'exit', 'help', 'clear', 'cls', 'history',
             'echo', 'dir', 'ls', 'cat', 'type', 'mkdir', 'md', 'rmdir', 'rd'
         }
@@ -25,15 +25,15 @@ class SimpleTerminal:
                 self.show_prompt()
                 command_input = input().strip()
                 if not command_input:
-                    continue  # empty input, skip
+                    continue  # skip empty commands
                 self.command_history.append(command_input)
-                if not self.process_command(command_input):  # exit = False
+                if not self.process_command(command_input):  # returns False = exit
                     break
             except KeyboardInterrupt:
-                print("\n^C")  # ctrl+c
+                print("\n^C")  # handle Ctrl+C
                 continue
             except EOFError:
-                break  # ctrl+d
+                break  # handle Ctrl+D
         print("Goodbye!")
 
     def show_prompt(self):
@@ -41,22 +41,27 @@ class SimpleTerminal:
         path_display = self.cwd
         if self.cwd.startswith(home):
             path_display = "~" + self.cwd[len(home):]
-        if os.name == 'nt':
-            print(f"{self.cwd}>", end=" ")  # windows prompt
-        else:
-            # linux-ish prompt, colors just for fun
-            print(f"\033[32m{self.user}@{self.host}\033[0m:\033[34m{path_display}\033[0m$ ", end="")
+
+        heart = "\u2764\uFE0F"  # ❤️
+        user_color = "\033[1;36m"  # cyan
+        host_color = "\033[1;35m"  # pink/purple
+        path_color = "\033[1;33m"  # yellow
+        reset = "\033[0m"
+
+        # show prompt: namit ❤️ DESKTOP ➜ ~/folder $
+        print(f"{user_color}{self.user}{reset} {heart} {host_color}{self.host}{reset} ➜ {path_color}{path_display}{reset} $ ", end="")
 
     def process_command(self, command_input):
         try:
-            args = shlex.split(command_input)  # split like bash
+            args = shlex.split(command_input)  # parse like shell
         except ValueError:
             print("Error: Invalid command syntax")
             return True
         if not args:
             return True
+
         command = args[0].lower()
-        # match commands to methods
+        # match command and run handler
         if command == 'exit':
             return False
         elif command == 'cd':
@@ -80,10 +85,9 @@ class SimpleTerminal:
         elif command in ['rmdir', 'rd']:
             return self.remove_directory(args)
         else:
-            return self.run_external_command(args)  # anything else
+            return self.run_external_command(args)  # fallback to shell
 
     def change_directory(self, args):
-        # cd with or without path
         target = os.path.expanduser("~") if len(args) == 1 else args[1]
         if target.startswith("~"):
             target = os.path.expanduser(target)
@@ -105,7 +109,7 @@ class SimpleTerminal:
         return True
 
     def show_help(self):
-        # not fancy, just shows stuff
+        # show available commands
         print("Built-in commands:")
         print("  cd [dir]        - Change directory")
         print("  pwd             - Print working directory")
@@ -122,11 +126,10 @@ class SimpleTerminal:
         return True
 
     def clear_screen(self):
-        os.system('cls' if os.name == 'nt' else 'clear')  # lazy clear
+        os.system('cls' if os.name == 'nt' else 'clear')
         return True
 
     def show_history(self):
-        # shows the command list
         for i, cmd in enumerate(self.command_history, 1):
             print(f"{i:4d}  {cmd}")
         return True
@@ -145,14 +148,17 @@ class SimpleTerminal:
             if not p.is_dir():
                 print(f"Not a directory: {path}")
                 return True
+
             print(f"\nDirectory of {p.absolute()}\n")
             items = sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
             file_count = 0
             dir_count = 0
             total_size = 0
+
             if p.parent != p:
-                print(f"{'<DIR>':>12}          ..")  # go up
+                print(f"{'<DIR>':>12}          ..")  # up one folder
                 dir_count += 1
+
             for item in items:
                 try:
                     stats = item.stat()
@@ -167,6 +173,7 @@ class SimpleTerminal:
                         total_size += size
                 except (OSError, PermissionError):
                     print(f"{'???':>12}          {item.name} (access denied)")
+
             print(f"\n{file_count:>16} File(s) {total_size:>15,} bytes")
             print(f"{dir_count:>16} Dir(s)")
         except PermissionError:
