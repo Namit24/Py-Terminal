@@ -1,5 +1,4 @@
 import os
-import sys
 import subprocess
 import shlex
 import getpass
@@ -7,129 +6,106 @@ import socket
 import datetime
 from pathlib import Path
 
-
-class Terminal:
+class SimpleTerminal:
     def __init__(self):
-        self.current_dir = os.getcwd()
-        self.username = getpass.getuser()
-        self.hostname = socket.gethostname()
-        self.history = []
-        self.builtin_commands = {
+        self.cwd = os.getcwd()  # get current dir
+        self.user = getpass.getuser()  # get user
+        self.host = socket.gethostname()  # get pc name
+        self.command_history = []  # just store past cmds
+        self.builtins = {  # basic stuff handled by python
             'cd', 'pwd', 'exit', 'help', 'clear', 'cls', 'history',
             'echo', 'dir', 'ls', 'cat', 'type', 'mkdir', 'md', 'rmdir', 'rd'
         }
 
-    def run(self):
+    def start(self):
         print("Python Terminal Emulator v1.0")
         print("Type 'help' for available commands.\n")
-
         while True:
             try:
-                self.print_prompt()
-                user_input = input().strip()
-
-                if not user_input:
-                    continue
-
-                # Add to history
-                self.history.append(user_input)
-
-                # Execute command
-                if not self.execute_command(user_input):
+                self.show_prompt()
+                command_input = input().strip()
+                if not command_input:
+                    continue  # empty input, skip
+                self.command_history.append(command_input)
+                if not self.process_command(command_input):  # exit = False
                     break
-
             except KeyboardInterrupt:
-                print("\n^C")
+                print("\n^C")  # ctrl+c
                 continue
             except EOFError:
-                break
-
+                break  # ctrl+d
         print("Goodbye!")
 
-    def print_prompt(self):
-        # Show current directory with ~ for home
-        home_dir = os.path.expanduser("~")
-        display_dir = self.current_dir
+    def show_prompt(self):
+        home = os.path.expanduser("~")
+        path_display = self.cwd
+        if self.cwd.startswith(home):
+            path_display = "~" + self.cwd[len(home):]
+        if os.name == 'nt':
+            print(f"{self.cwd}>", end=" ")  # windows prompt
+        else:
+            # linux-ish prompt, colors just for fun
+            print(f"\033[32m{self.user}@{self.host}\033[0m:\033[34m{path_display}\033[0m$ ", end="")
 
-        if self.current_dir.startswith(home_dir):
-            display_dir = "~" + self.current_dir[len(home_dir):]
-
-        if os.name == 'nt':  # Windows
-            print(f"{self.current_dir}>", end=" ")
-        else:  # Unix/Linux
-            print(f"\033[32m{self.username}@{self.hostname}\033[0m:\033[34m{display_dir}\033[0m$ ", end="")
-
-    def execute_command(self, user_input):
+    def process_command(self, command_input):
         try:
-            args = shlex.split(user_input)
+            args = shlex.split(command_input)  # split like bash
         except ValueError:
             print("Error: Invalid command syntax")
             return True
-
         if not args:
             return True
-
         command = args[0].lower()
-
-        # Handle built-in commands
+        # match commands to methods
         if command == 'exit':
             return False
         elif command == 'cd':
-            return self.handle_cd(args)
+            return self.change_directory(args)
         elif command == 'pwd':
-            return self.handle_pwd()
+            return self.print_working_directory()
         elif command == 'help':
-            return self.handle_help()
+            return self.show_help()
         elif command in ['clear', 'cls']:
-            return self.handle_clear()
+            return self.clear_screen()
         elif command == 'history':
-            return self.handle_history()
+            return self.show_history()
         elif command == 'echo':
-            return self.handle_echo(args)
+            return self.echo_text(args)
         elif command in ['dir', 'ls']:
-            return self.handle_dir(args)
+            return self.list_directory(args)
         elif command in ['cat', 'type']:
-            return self.handle_cat(args)
+            return self.show_file_contents(args)
         elif command in ['mkdir', 'md']:
-            return self.handle_mkdir(args)
+            return self.make_directory(args)
         elif command in ['rmdir', 'rd']:
-            return self.handle_rmdir(args)
+            return self.remove_directory(args)
         else:
-            # Execute external command
-            return self.execute_external_command(args)
+            return self.run_external_command(args)  # anything else
 
-    def handle_cd(self, args):
-        if len(args) == 1:
-            # No arguments - go to home directory
-            target_dir = os.path.expanduser("~")
-        else:
-            target_dir = args[1]
-
-            # Handle ~ expansion
-            if target_dir.startswith("~"):
-                target_dir = os.path.expanduser(target_dir)
-
-            # Handle relative paths
-            if not os.path.isabs(target_dir):
-                target_dir = os.path.join(self.current_dir, target_dir)
-
+    def change_directory(self, args):
+        # cd with or without path
+        target = os.path.expanduser("~") if len(args) == 1 else args[1]
+        if target.startswith("~"):
+            target = os.path.expanduser(target)
+        if not os.path.isabs(target):
+            target = os.path.join(self.cwd, target)
         try:
-            os.chdir(target_dir)
-            self.current_dir = os.getcwd()
+            os.chdir(target)
+            self.cwd = os.getcwd()
         except FileNotFoundError:
-            print(f"cd: {target_dir}: No such file or directory")
+            print(f"cd: {target}: No such file or directory")
         except PermissionError:
-            print(f"cd: {target_dir}: Permission denied")
+            print(f"cd: {target}: Permission denied")
         except Exception as e:
             print(f"cd: {e}")
-
         return True
 
-    def handle_pwd(self):
-        print(self.current_dir)
+    def print_working_directory(self):
+        print(self.cwd)
         return True
 
-    def handle_help(self):
+    def show_help(self):
+        # not fancy, just shows stuff
         print("Built-in commands:")
         print("  cd [dir]        - Change directory")
         print("  pwd             - Print working directory")
@@ -145,116 +121,92 @@ class Terminal:
         print("\nOther commands will be executed as external programs.")
         return True
 
-    def handle_clear(self):
-        if os.name == 'nt':  # Windows
-            os.system('cls')
-        else:  # Unix/Linux
-            os.system('clear')
+    def clear_screen(self):
+        os.system('cls' if os.name == 'nt' else 'clear')  # lazy clear
         return True
 
-    def handle_history(self):
-        for i, cmd in enumerate(self.history, 1):
+    def show_history(self):
+        # shows the command list
+        for i, cmd in enumerate(self.command_history, 1):
             print(f"{i:4d}  {cmd}")
         return True
 
-    def handle_echo(self, args):
-        if len(args) > 1:
-            print(" ".join(args[1:]))
-        else:
-            print()
+    def echo_text(self, args):
+        print(" ".join(args[1:]) if len(args) > 1 else "")
         return True
 
-    def handle_dir(self, args):
-        target_dir = self.current_dir if len(args) == 1 else args[1]
-
+    def list_directory(self, args):
+        path = self.cwd if len(args) == 1 else args[1]
         try:
-            path = Path(target_dir)
-            if not path.exists():
-                print(f"Directory not found: {target_dir}")
+            p = Path(path)
+            if not p.exists():
+                print(f"Directory not found: {path}")
                 return True
-
-            if not path.is_dir():
-                print(f"Not a directory: {target_dir}")
+            if not p.is_dir():
+                print(f"Not a directory: {path}")
                 return True
-
-            print(f"\nDirectory of {path.absolute()}\n")
-
-            items = list(path.iterdir())
-            items.sort(key=lambda x: (not x.is_dir(), x.name.lower()))
-
+            print(f"\nDirectory of {p.absolute()}\n")
+            items = sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
             file_count = 0
             dir_count = 0
             total_size = 0
-
-            # Show parent directory if not root
-            if path.parent != path:
-                print(f"{'<DIR>':>12}          ..")
+            if p.parent != p:
+                print(f"{'<DIR>':>12}          ..")  # go up
                 dir_count += 1
-
             for item in items:
                 try:
-                    stat = item.stat()
-                    mtime = datetime.datetime.fromtimestamp(stat.st_mtime)
-
+                    stats = item.stat()
+                    mod_time = datetime.datetime.fromtimestamp(stats.st_mtime)
                     if item.is_dir():
-                        print(f"{mtime.strftime('%m/%d/%Y  %I:%M %p')} {'<DIR>':>12}          {item.name}")
+                        print(f"{mod_time.strftime('%m/%d/%Y  %I:%M %p')} {'<DIR>':>12}          {item.name}")
                         dir_count += 1
                     else:
-                        size = stat.st_size
-                        print(f"{mtime.strftime('%m/%d/%Y  %I:%M %p')} {size:>12,}          {item.name}")
+                        size = stats.st_size
+                        print(f"{mod_time.strftime('%m/%d/%Y  %I:%M %p')} {size:>12,}          {item.name}")
                         file_count += 1
                         total_size += size
-
                 except (OSError, PermissionError):
                     print(f"{'???':>12}          {item.name} (access denied)")
-
             print(f"\n{file_count:>16} File(s) {total_size:>15,} bytes")
             print(f"{dir_count:>16} Dir(s)")
-
         except PermissionError:
-            print(f"Access denied: {target_dir}")
+            print(f"Access denied: {path}")
         except Exception as e:
             print(f"Error listing directory: {e}")
-
         return True
 
-    def handle_cat(self, args):
+    def show_file_contents(self, args):
         if len(args) < 2:
             print("Usage: cat/type <filename>")
             return True
-
         filename = args[1]
         try:
-            with open(filename, 'r', encoding='utf-8', errors='replace') as f:
-                print(f.read(), end='')
+            with open(filename, 'r', encoding='utf-8', errors='replace') as file:
+                print(file.read(), end='')
         except FileNotFoundError:
             print(f"File not found: {filename}")
         except PermissionError:
             print(f"Permission denied: {filename}")
         except Exception as e:
             print(f"Error reading file: {e}")
-
         return True
 
-    def handle_mkdir(self, args):
+    def make_directory(self, args):
         if len(args) < 2:
             print("Usage: mkdir/md <directory>")
             return True
-
         dirname = args[1]
         try:
             os.makedirs(dirname, exist_ok=True)
             print(f"Directory created: {dirname}")
         except Exception as e:
             print(f"Error creating directory: {e}")
-
         return True
 
-    def handle_rmdir(self, args):
+    def remove_directory(self, args):
         if len(args) < 2:
             print("Usage: rmdir/rd <directory>")
             return True
-
         dirname = args[1]
         try:
             os.rmdir(dirname)
@@ -262,28 +214,23 @@ class Terminal:
         except FileNotFoundError:
             print(f"Directory not found: {dirname}")
         except OSError as e:
-            if e.errno == 39:  # Directory not empty
+            if e.errno == 39:
                 print(f"Directory not empty: {dirname}")
             else:
                 print(f"Error removing directory: {e}")
         except Exception as e:
             print(f"Error removing directory: {e}")
-
         return True
 
-    def execute_external_command(self, args):
+    def run_external_command(self, args):
         try:
-            result = subprocess.run(args, cwd=self.current_dir,
-                                    capture_output=False, text=True)
-            return True
+            subprocess.run(args, cwd=self.cwd, capture_output=False, text=True)
         except FileNotFoundError:
             print(f"Command not found: {args[0]}")
         except Exception as e:
             print(f"Error executing command: {e}")
-
         return True
 
-
 if __name__ == "__main__":
-    terminal = Terminal()
-    terminal.run()
+    shell = SimpleTerminal()
+    shell.start()
